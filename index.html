@@ -115,7 +115,7 @@ function render(){
   if(!L){
     hd.innerHTML='<h1>My tasks</h1><button id="menu" aria-label="Backup menu" style="padding-right:2px">⋮</button>';
     $('#menu').onclick=function(e){e.stopPropagation();var p=$('#pop');p.style.display=p.style.display==='block'?'none':'block'};
-    inp.placeholder='New task, e.g. Groceries';
+    inp.placeholder='New task, e.g. Buy Mercedes';
     if(!S.lists.length){
       main.innerHTML='<div class="empty"><b>No tasks yet</b>Type a name below and tap Add. Open a task to fill it with to-dos.</div>';
     }else{

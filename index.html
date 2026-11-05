@@ -103,8 +103,8 @@ function render(){
         var n=l.items.length, d=l.items.filter(function(i){return i.d}).length;
         return '<div class="row" data-kind="list" data-id="'+l.id+'"><div class="bg"><span>'+(l.pin?'Unpin':'Pin')+'</span><span>Delete</span></div>'+
           '<div class="rc"><div class="txt"><div class="name">'+(l.pin?'<span class="pin">📌</span> ':'')+esc(l.name)+'</div><div class="meta">'+(n?d+' of '+n+' done':'Empty')+'</div>'+
-          '<div class="bar"><i style="width:'+(n?d/n*100:0)+'%"></i></div></div><span class="chev">›</span></div></div>';
-      }).join('')+'<p class="hint">Swipe right to pin · left to delete</p>';
+          '<div class="bar"><i style="width:'+(n?d/n*100:0)+'%"></i></div></div><div class="handle" aria-label="Drag to reorder">'+GRIP+'</div></div></div>';
+      }).join('')+'<p class="hint">Swipe right to pin · left to delete · drag ⠿ to reorder</p>';
     }
   }else{
     var n=L.items.length, d=L.items.filter(function(i){return i.d}).length;
@@ -246,8 +246,10 @@ main.addEventListener('pointermove',function(e){
 function endDrag(e){
   if(!dr||e.pointerId!==dr.id) return;
   var d=dr; dr=null;
-  var items=cur().items, it=items.splice(d.i,1)[0];
-  items.splice(d.to,0,it); save(); render();
+  var L=cur(), items=L?L.items:ordered(), it=items.splice(d.i,1)[0];
+  items.splice(d.to,0,it);
+  if(!L) S.lists=items;
+  save(); render();
 }
 main.addEventListener('pointerup',endDrag);
 main.addEventListener('pointercancel',endDrag);

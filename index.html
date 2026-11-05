@@ -47,6 +47,7 @@ main{flex:1;padding:12px 12px 100px}
 .bar{height:4px;background:var(--line);border-radius:2px;margin-top:8px;overflow:hidden}
 .bar i{display:block;height:100%;background:var(--accent);transition:width .25s}
 .handle{width:34px;height:34px;flex:none;display:grid;place-items:center;color:var(--mute);touch-action:none;cursor:grab}
+.pin{font-size:14px}
 .chev{color:var(--mute);font-size:22px;flex:none}
 .empty{text-align:center;color:var(--mute);padding:60px 20px}
 .empty b{display:block;color:var(--ink);font-size:18px;margin-bottom:4px}
@@ -98,17 +99,17 @@ function render(){
     if(!S.lists.length){
       main.innerHTML='<div class="empty"><b>No tasks yet</b>Type a name below and tap Add. Open a task to fill it with to-dos.</div>';
     }else{
-      main.innerHTML=S.lists.map(function(l){
+      main.innerHTML=ordered().map(function(l){
         var n=l.items.length, d=l.items.filter(function(i){return i.d}).length;
-        return '<div class="row" data-kind="list" data-id="'+l.id+'"><div class="bg"><span></span><span class="bgR" style="background:none">Delete</span></div>'+
-          '<div class="rc"><div class="txt"><div class="name">'+esc(l.name)+'</div><div class="meta">'+(n?d+' of '+n+' done':'Empty')+'</div>'+
+        return '<div class="row" data-kind="list" data-id="'+l.id+'"><div class="bg"><span>'+(l.pin?'Unpin':'Pin')+'</span><span>Delete</span></div>'+
+          '<div class="rc"><div class="txt"><div class="name">'+(l.pin?'<span class="pin">📌</span> ':'')+esc(l.name)+'</div><div class="meta">'+(n?d+' of '+n+' done':'Empty')+'</div>'+
           '<div class="bar"><i style="width:'+(n?d/n*100:0)+'%"></i></div></div><span class="chev">›</span></div></div>';
-      }).join('')+'<p class="hint">Swipe left to delete</p>';
+      }).join('')+'<p class="hint">Swipe right to pin · left to delete</p>';
     }
   }else{
     var n=L.items.length, d=L.items.filter(function(i){return i.d}).length;
     hd.innerHTML='<button id="back" aria-label="Back">‹</button><h1>'+esc(L.name)+'</h1><span class="sub">'+d+'/'+n+'</span>';
-    $('#back').onclick=function(){view=null;render();window.scrollTo(0,0)};
+    $('#back').onclick=function(){ if(location.hash) history.back(); else {view=null;render();window.scrollTo(0,0);} };
     inp.placeholder='Add a to-do';
     if(!n) main.innerHTML='<div class="empty"><b>Nothing to do</b>Add your first to-do below.</div>';
     else main.innerHTML=L.items.map(function(i){
@@ -116,12 +117,13 @@ function render(){
         '<div class="rc"><button class="chk" aria-label="Mark done">'+CHECK+'</button><div class="txt">'+esc(i.t)+'</div>'+
         '<div class="handle" aria-label="Drag to reorder">'+GRIP+'</div></div></div>';
     }).join('')+'<p class="hint">Swipe right to check · left to delete · drag ⠿ to reorder</p>';
-    // swipe backgrounds colours
-    main.querySelectorAll('.row').forEach(function(r){
-      r.querySelector('.bg').style.background='linear-gradient(90deg,var(--accent) 50%,var(--del) 50%)';
-    });
   }
-  if(!L) main.querySelectorAll('.row .bg').forEach(function(b){b.style.background='var(--del)';b.style.justifyContent='flex-end'});
+  main.querySelectorAll('.row .bg').forEach(function(b){
+    b.style.background='linear-gradient(90deg,var(--accent) 50%,var(--del) 50%)';
+  });
+}
+function ordered(){
+  return S.lists.filter(function(l){return l.pin}).concat(S.lists.filter(function(l){return !l.pin}));
 }
 
 /* ---- add ---- */
@@ -148,7 +150,7 @@ main.addEventListener('click',function(e){
   var row=e.target.closest('.row'); if(!row||row._swiped) return;
   if(e.target.closest('.handle')) return;
   var id=row.dataset.id;
-  if(row.dataset.kind==='list'){ view=id; render(); window.scrollTo(0,0); return; }
+  if(row.dataset.kind==='list'){ view=id; render(); window.scrollTo(0,0); try{location.hash='#'+id}catch(x){} return; }
   if(e.target.closest('.chk')||e.target.closest('.txt')) toggle(id);
 });
 function toggle(id){
@@ -176,11 +178,9 @@ main.addEventListener('pointermove',function(e){
       try{main.setPointerCapture(e.pointerId)}catch(x){}
     } else return;
   }
-  var isList=sw.row.dataset.kind==='list';
-  if(isList&&dx>0) dx=0;
   sw.dx=dx; sw.rc.style.transform='translateX('+dx+'px)';
   var bg=sw.row.querySelector('.bg');
-  if(!isList) bg.style.background=dx>0?'var(--accent)':'var(--del)';
+  bg.style.background=dx>0?'var(--accent)':'var(--del)';
   bg.style.justifyContent=dx>0?'flex-start':'flex-end';
   bg.children[0].style.display=dx>0?'':'none';
   bg.children[1].style.display=dx>0?'none':'';
@@ -192,7 +192,11 @@ function endSwipe(e){
   if(!s.on) return;
   s.row._swiped=true; setTimeout(function(){s.row._swiped=false},60);
   var T=Math.min(110,s.row.offsetWidth*.3), id=s.row.dataset.id;
-  if(s.dx>T&&s.row.dataset.kind==='item'){ s.rc.style.transform=''; toggle(id); }
+  if(s.dx>T){
+    s.rc.style.transform='';
+    if(s.row.dataset.kind==='item') toggle(id);
+    else { var l=S.lists.find(function(x){return x.id===id}); l.pin=!l.pin; save(); render(); }
+  }
   else if(s.dx<-T){
     s.rc.style.transform='translateX(-110%)';
     setTimeout(function(){
@@ -248,6 +252,13 @@ function endDrag(e){
 main.addEventListener('pointerup',endDrag);
 main.addEventListener('pointercancel',endDrag);
 
+window.addEventListener('hashchange',function(){
+  var id=location.hash.slice(1);
+  var nv=S.lists.some(function(l){return l.id===id})?id:null;
+  if(nv===view) return;
+  view=nv; render(); window.scrollTo(0,0);
+});
+(function(){var id=location.hash.slice(1); if(S.lists.some(function(l){return l.id===id})) view=id;})();
 render();
 if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
   window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){})});

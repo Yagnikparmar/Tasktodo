@@ -62,6 +62,17 @@ main{flex:1;padding:12px 12px 100px}
   border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.3);overflow:hidden}
 #pop button{display:block;width:100%;text-align:left;font:inherit;padding:14px 18px;background:none;border:0;color:inherit;cursor:pointer}
 #pop button+button{border-top:1px solid var(--line)}
+#sheet{position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center}
+#sheet .panel{width:100%;max-width:560px;background:var(--card);color:var(--ink);border-radius:18px 18px 0 0;
+  padding:18px 16px calc(env(safe-area-inset-bottom,0px) + 16px)}
+#sheet h2{margin:0 0 12px;font-size:17px}
+#sheet input{width:100%;font:inherit;padding:13px 14px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+#sheet input:focus{outline:2px solid var(--accent);outline-offset:1px}
+#sheet .btns{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+#sheet .btns button{flex:1;min-width:30%;font:inherit;font-weight:600;padding:12px;border-radius:12px;border:1px solid var(--line);background:none;color:var(--ink);cursor:pointer}
+#sheet .btns .ok{background:var(--accent);border-color:var(--accent);color:#fff}
+#sheet .btns .rm{color:var(--del)}
+.row{-webkit-touch-callout:none}
 #toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 84px);transform:translateX(-50%);
   background:var(--bar);color:#fff;padding:10px 14px;border-radius:10px;display:none;gap:14px;align-items:center;z-index:9;font-size:15px;box-shadow:0 4px 16px rgba(0,0,0,.3)}
 #toast button{background:none;border:0;color:#6FE3D0;font:inherit;font-weight:700;cursor:pointer}
@@ -76,6 +87,8 @@ main{flex:1;padding:12px 12px 100px}
 </div>
 <input type="file" id="file" accept=".json,application/json" hidden>
 <div id="pop"><button id="exp">Export backup</button><button id="imp">Import backup</button></div>
+<div id="sheet"><div class="panel"><h2 id="sh"></h2><input id="si" autocomplete="off" enterkeyhint="done">
+<div class="btns"><button class="ok" id="ssave">Save</button><button id="spin">Pin</button><button class="rm" id="sdel">Delete</button><button id="scan">Cancel</button></div></div></div>
 <div id="toast"><span id="tmsg"></span><button id="undo">Undo</button></div>
 
 <script>
@@ -111,7 +124,7 @@ function render(){
         return '<div class="row" data-kind="list" data-id="'+l.id+'"><div class="bg"><span>'+(l.pin?'Unpin':'Pin')+'</span><span>Delete</span></div>'+
           '<div class="rc"><div class="txt"><div class="name">'+(l.pin?'<span class="pin">📌</span> ':'')+esc(l.name)+'</div><div class="meta">'+(n?d+' of '+n+' done':'Empty')+'</div>'+
           '<div class="bar"><i style="width:'+(n?d/n*100:0)+'%"></i></div></div><div class="handle" aria-label="Drag to reorder">'+GRIP+'</div></div></div>';
-      }).join('')+'<p class="hint">Swipe right to pin · left to delete · drag ⠿ to reorder</p>';
+      }).join('')+'<p class="hint">Swipe right to pin · left to delete · hold to edit · drag ⠿ to reorder</p>';
     }
   }else{
     var n=L.items.length, d=L.items.filter(function(i){return i.d}).length;
@@ -123,7 +136,7 @@ function render(){
       return '<div class="row'+(i.d?' done':'')+'" data-kind="item" data-id="'+i.id+'"><div class="bg"><span class="bgL" style="background:none">'+(i.d?'Undo':'Done')+'</span><span style="background:none">Delete</span></div>'+
         '<div class="rc"><button class="chk" aria-label="Mark done">'+CHECK+'</button><div class="txt">'+esc(i.t)+'</div>'+
         '<div class="handle" aria-label="Drag to reorder">'+GRIP+'</div></div></div>';
-    }).join('')+'<p class="hint">Swipe right to check · left to delete · drag ⠿ to reorder</p>';
+    }).join('')+'<p class="hint">Swipe right to check · left to delete · hold to edit · drag ⠿ to reorder</p>';
   }
   main.querySelectorAll('.row .bg').forEach(function(b){
     b.style.background='linear-gradient(90deg,var(--accent) 50%,var(--del) 50%)';
@@ -191,6 +204,7 @@ $('#file').onchange=function(){
 
 /* ---- tap ---- */
 main.addEventListener('click',function(e){
+  if(lpFired){lpFired=false;return}
   var row=e.target.closest('.row'); if(!row||row._swiped) return;
   if(e.target.closest('.handle')) return;
   var id=row.dataset.id;
@@ -251,6 +265,56 @@ function endSwipe(e){
 }
 main.addEventListener('pointerup',endSwipe);
 main.addEventListener('pointercancel',endSwipe);
+
+/* ---- long press to edit ---- */
+var lpFired=false, lp=null, ed=null, edOpened=0;
+main.addEventListener('contextmenu',function(e){e.preventDefault()});
+main.addEventListener('pointerdown',function(e){
+  lpFired=false;
+  var row=e.target.closest('.row'); if(!row||e.target.closest('.handle')) return;
+  clearTimeout(lp&&lp.t);
+  lp={x:e.clientX,y:e.clientY,row:row,t:setTimeout(function(){
+    var r=lp.row; lp=null; sw=null; lpFired=true;
+    r.classList.remove('moving'); r.querySelector('.rc').style.transform='';
+    if(navigator.vibrate) try{navigator.vibrate(30)}catch(x){}
+    openEdit(r.dataset.kind,r.dataset.id);
+  },550)};
+});
+main.addEventListener('pointermove',function(e){
+  if(lp&&(Math.abs(e.clientX-lp.x)>8||Math.abs(e.clientY-lp.y)>8)){clearTimeout(lp.t);lp=null}
+});
+function cancelLP(){ if(lp){clearTimeout(lp.t);lp=null} }
+main.addEventListener('pointerup',cancelLP);
+main.addEventListener('pointercancel',cancelLP);
+
+function findEd(){
+  if(!ed) return null;
+  return ed.kind==='list'?S.lists.find(function(x){return x.id===ed.id}):cur().items.find(function(x){return x.id===ed.id});
+}
+function openEdit(kind,id){
+  ed={kind:kind,id:id}; var o=findEd(); if(!o){ed=null;return}
+  $('#sh').textContent=kind==='list'?'Edit task':'Edit to-do';
+  $('#si').value=kind==='list'?o.name:o.t;
+  $('#spin').style.display=kind==='list'?'':'none';
+  $('#spin').textContent=o.pin?'Unpin':'Pin';
+  $('#sheet').style.display='flex'; edOpened=Date.now();
+  setTimeout(function(){var i=$('#si');i.focus();i.select()},50);
+}
+function closeEdit(){ $('#sheet').style.display='none'; ed=null; }
+$('#sheet').addEventListener('click',function(e){ if(e.target===this&&Date.now()-edOpened>500) closeEdit(); });
+$('#scan').onclick=closeEdit;
+function saveEdit(){
+  var o=findEd(), v=$('#si').value.trim();
+  if(o&&v){ if(ed.kind==='list') o.name=v; else o.t=v; save(); render(); }
+  closeEdit();
+}
+$('#ssave').onclick=saveEdit;
+$('#si').addEventListener('keydown',function(e){ if(e.key==='Enter'){e.preventDefault();saveEdit()} else if(e.key==='Escape') closeEdit(); });
+$('#spin').onclick=function(){ var o=findEd(); if(o){o.pin=!o.pin;save();render();} closeEdit(); };
+$('#sdel').onclick=function(){
+  var k=ed.kind, id=ed.id; closeEdit();
+  if(k==='list') removeAt(S.lists,id,'Task'); else removeAt(cur().items,id,'To-do');
+};
 
 /* ---- drag to reorder ---- */
 var dr=null;

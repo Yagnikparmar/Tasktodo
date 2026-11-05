@@ -58,6 +58,10 @@ main{flex:1;padding:12px 12px 100px}
 .add input:focus,.chk:focus-visible,.handle:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .add button{font:inherit;font-weight:600;padding:0 18px;border:0;border-radius:12px;background:var(--accent);color:#fff;cursor:pointer}
 .hint{font-size:13px;color:var(--mute);text-align:center;margin:10px 0 0}
+#pop{position:fixed;right:10px;top:calc(env(safe-area-inset-top,0px) + 56px);display:none;z-index:8;background:var(--card);color:var(--ink);
+  border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.3);overflow:hidden}
+#pop button{display:block;width:100%;text-align:left;font:inherit;padding:14px 18px;background:none;border:0;color:inherit;cursor:pointer}
+#pop button+button{border-top:1px solid var(--line)}
 #toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 84px);transform:translateX(-50%);
   background:var(--bar);color:#fff;padding:10px 14px;border-radius:10px;display:none;gap:14px;align-items:center;z-index:9;font-size:15px;box-shadow:0 4px 16px rgba(0,0,0,.3)}
 #toast button{background:none;border:0;color:#6FE3D0;font:inherit;font-weight:700;cursor:pointer}
@@ -70,6 +74,8 @@ main{flex:1;padding:12px 12px 100px}
   <main id="main"></main>
   <div class="add"><form id="f"><input id="in" autocomplete="off" enterkeyhint="done"><button>Add</button></form></div>
 </div>
+<input type="file" id="file" accept=".json,application/json" hidden>
+<div id="pop"><button id="exp">Export backup</button><button id="imp">Import backup</button></div>
 <div id="toast"><span id="tmsg"></span><button id="undo">Undo</button></div>
 
 <script>
@@ -94,7 +100,8 @@ function render(){
   var L=cur();
   if(view&&!L) view=null;
   if(!L){
-    hd.innerHTML='<h1>My tasks</h1>';
+    hd.innerHTML='<h1>My tasks</h1><button id="menu" aria-label="Backup menu" style="padding-right:2px">⋮</button>';
+    $('#menu').onclick=function(e){e.stopPropagation();var p=$('#pop');p.style.display=p.style.display==='block'?'none':'block'};
     inp.placeholder='New task, e.g. Groceries';
     if(!S.lists.length){
       main.innerHTML='<div class="empty"><b>No tasks yet</b>Type a name below and tap Add. Open a task to fill it with to-dos.</div>';
@@ -140,10 +147,47 @@ $('#f').onsubmit=function(e){
 /* ---- toast / undo ---- */
 var undoFn=null, tt;
 function toast(msg,fn){
-  undoFn=fn; $('#tmsg').textContent=msg; $('#toast').style.display='flex';
+  undoFn=fn; $('#undo').style.display=fn?'':'none'; $('#tmsg').textContent=msg; $('#toast').style.display='flex';
   clearTimeout(tt); tt=setTimeout(function(){$('#toast').style.display='none';undoFn=null},4000);
 }
 $('#undo').onclick=function(){ if(undoFn){undoFn();undoFn=null;} $('#toast').style.display='none'; };
+
+/* ---- backup ---- */
+document.addEventListener('click',function(){$('#pop').style.display='none'});
+$('#exp').onclick=function(){
+  var d=new Date(), name='tasks-backup-'+d.toISOString().slice(0,10)+'.json';
+  var blob=new Blob([JSON.stringify({app:'tasks',version:1,exported:d.toISOString(),lists:S.lists},null,2)],{type:'application/json'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){URL.revokeObjectURL(a.href)},2000);
+  toast('Saved '+name);
+};
+$('#imp').onclick=function(){$('#file').value='';$('#file').click()};
+$('#file').onchange=function(){
+  var f=this.files[0]; if(!f) return;
+  var r=new FileReader();
+  r.onload=function(){
+    try{
+      var data=JSON.parse(r.result), arr=Array.isArray(data)?data:data.lists;
+      if(!Array.isArray(arr)) throw 0;
+      var added=0;
+      arr.forEach(function(l){
+        if(!l||typeof l.name!=='string') return;
+        var items=(Array.isArray(l.items)?l.items:[]).filter(function(i){return i&&typeof i.t==='string'})
+          .map(function(i){return{id:String(i.id||uid()),t:i.t,d:!!i.d}});
+        var ex=S.lists.find(function(x){return x.id===String(l.id)});
+        if(ex){
+          items.forEach(function(i){ if(!ex.items.some(function(y){return y.id===i.id})){ex.items.push(i);added++} });
+        }else{
+          S.lists.push({id:String(l.id||uid()),name:l.name,pin:!!l.pin,items:items}); added++;
+        }
+      });
+      save(); view=null; render();
+      toast(added?'Imported successfully':'Nothing new to import');
+    }catch(e){ alert('That file is not a valid backup.'); }
+  };
+  r.readAsText(f);
+};
 
 /* ---- tap ---- */
 main.addEventListener('click',function(e){
